@@ -1,0 +1,37 @@
+package com.alas.md3gpscam.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// Light Theme Tones (Pixel Blue & Charcoal Neutral)
+val LightPrimary = Color(0xFF00639B)
+val LightOnPrimary = Color(0xFFFFFFFF)
+val LightPrimaryContainer = Color(0xFFDEE1FF)
+val LightOnPrimaryContainer = Color(0xFF001540)
+val LightSecondary = Color(0xFF5B5D72)
+val LightOnSecondary = Color(0xFFFFFFFF)
+val LightSecondaryContainer = Color(0xFFE0E1F9)
+val LightOnSecondaryContainer = Color(0xFF171A2C)
+val LightBackground = Color(0xFFFDFBFF)
+val LightOnBackground = Color(0xFF1B1B1F)
+val LightSurface = Color(0xFFFCF8FD)
+val LightOnSurface = Color(0xFF1B1B1F)
+val LightSurfaceVariant = Color(0xFFE2E1EC)
+val LightOnSurfaceVariant = Color(0xFF45464F)
+val LightOutline = Color(0xFF767680)
+
+// Dark Theme Tones
+val DarkPrimary = Color(0xFFBAC3FF)
+val DarkOnPrimary = Color(0xFF082778)
+val DarkPrimaryContainer = Color(0xFF293F8F)
+val DarkOnPrimaryContainer = Color(0xFFDEE1FF)
+val DarkSecondary = Color(0xFFC3C5DD)
+val DarkOnSecondary = Color(0xFF2C2F42)
+val DarkSecondaryContainer = Color(0xFF434559)
+val DarkOnSecondaryContainer = Color(0xFFE0E1F9)
+val DarkBackground = Color(0xFF1B1B1F)
+val DarkOnBackground = Color(0xFFE3E1E6)
+val DarkSurface = Color(0xFF131316)
+val DarkOnSurface = Color(0xFFE3E1E6)
+val DarkSurfaceVariant = Color(0xFF45464F)
+val DarkOnSurfaceVariant = Color(0xFFC6C5D0)
+val DarkOutline = Color(0xFF90909A)
