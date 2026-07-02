@@ -1,6 +1,11 @@
 package com.alas.md3gpscam.ui.screens
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -34,6 +39,45 @@ import org.osmdroid.views.overlay.Marker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+// Helper to dynamically draw a beautiful modern Material Design 3 style marker pin
+fun createMarkerIcon(context: android.content.Context, isSelected: Boolean): BitmapDrawable {
+    val density = context.resources.displayMetrics.density
+    val size = (32 * density).toInt()
+    val tailHeight = (8 * density).toInt()
+    
+    val bitmap = Bitmap.createBitmap(size, size + tailHeight, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    
+    val paint = Paint().apply {
+        isAntiAlias = true
+    }
+    
+    val radius = size / 2f
+    
+    // Draw outer pin circle (Material You Primary / Accent colors)
+    paint.color = if (isSelected) 0xFF4F378B.toInt() else 0xFF6750A4.toInt()
+    canvas.drawCircle(radius, radius, radius - 2 * density, paint)
+    
+    // Draw pin tail pointing down
+    val tailPath = Path().apply {
+        moveTo(radius - 5 * density, size - 3 * density)
+        lineTo(radius, size + tailHeight.toFloat())
+        lineTo(radius + 5 * density, size - 3 * density)
+        close()
+    }
+    canvas.drawPath(tailPath, paint)
+    
+    // Draw inner white border ring
+    paint.color = android.graphics.Color.WHITE
+    canvas.drawCircle(radius, radius, radius - 5 * density, paint)
+    
+    // Draw inner core dot
+    paint.color = if (isSelected) 0xFFD0BCFF.toInt() else 0xFF6750A4.toInt()
+    canvas.drawCircle(radius, radius, radius - 8 * density, paint)
+    
+    return BitmapDrawable(context.resources, bitmap)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -179,13 +223,15 @@ fun MapScreen(
                     mapView.overlays.removeAt(mapView.overlays.size - 1)
                 }
 
-                // 3. Render markers
+                // 3. Render markers with beautiful custom icons
                 photos.forEach { photo ->
+                    val isSelected = selectedPhotoMarker == photo
                     val marker = Marker(mapView).apply {
                         position = GeoPoint(photo.latitude, photo.longitude)
                         title = photo.address
                         infoWindow = null // Disable default info bubble popup
                         setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        icon = createMarkerIcon(mapView.context, isSelected)
                         setOnMarkerClickListener { _, _ ->
                             selectedPhotoMarker = photo
                             true
@@ -231,7 +277,7 @@ fun MapScreen(
                 Text("Map Mode: ", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                 
                 // Map Mode options: Normal (Roadmap), Satellite, Terrain, Dark, Grey
-                listOf("normal", "satellite", "hybrid", "terrain").forEach { type ->
+                listOf("normal", "satellite", "terrain", "dark", "grey").forEach { type ->
                     val isSelected = mapTypeSetting == type
                     FilterChip(
                         selected = isSelected,
