@@ -1,5 +1,9 @@
 package com.alas.md3gpscam.ui.screens
 
+import android.annotation.SuppressLint
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.*
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -16,14 +20,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.alas.md3gpscam.data.database.PhotoEntity
 import com.alas.md3gpscam.ui.MainViewModel
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.*
-import com.google.maps.android.compose.clustering.Clustering
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -39,84 +39,73 @@ fun MapScreen(
     val mapTypeSetting by viewModel.mapType.collectAsState()
 
     var selectedPhotoMarker by remember { mutableStateOf<PhotoEntity?>(null) }
+    var isPageLoaded by remember { mutableStateOf(false) }
 
-    val properties = remember(mapTypeSetting) {
-        MapProperties(
-            mapType = when (mapTypeSetting) {
-                "satellite" -> MapType.SATELLITE
-                "hybrid" -> MapType.HYBRID
-                "terrain" -> MapType.TERRAIN
-                else -> MapType.NORMAL
-            },
-            isMyLocationEnabled = true
-        )
-    }
-
-    val uiSettings by remember {
-        mutableStateOf(
-            MapUiSettings(
-                myLocationButtonEnabled = true,
-                zoomControlsEnabled = false
-            )
-        )
-    }
-
-    // Camera State
-    val initialTarget = remember(photos) {
-        if (photos.isNotEmpty()) {
-            LatLng(photos.first().latitude, photos.first().longitude)
-        } else {
-            LatLng(currentLocation.latitude, currentLocation.longitude)
-        }
-    }
-    
-    val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(initialTarget, 10f)
-    }
-
-    var hasCenteredOnCurrentLocation by remember { mutableStateOf(false) }
-
-    LaunchedEffect(currentLocation) {
-        if (currentLocation.latitude != 0.0 && currentLocation.longitude != 0.0 && !hasCenteredOnCurrentLocation && photos.isEmpty()) {
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(
-                    LatLng(currentLocation.latitude, currentLocation.longitude),
-                    15f
-                )
-            )
-            hasCenteredOnCurrentLocation = true
-        }
-    }
-
-    // Keep camera updated if list changes first time
-    LaunchedEffect(photos) {
-        if (photos.isNotEmpty() && cameraPositionState.position.target.latitude == 0.0) {
-            cameraPositionState.position = CameraPosition.fromLatLngZoom(
-                LatLng(photos.first().latitude, photos.first().longitude),
-                12f
-            )
-        }
+    // Serialize photos to JSON string for Leaflet JavaScript interface
+    val jsonPhotos = remember(photos) {
+        photos.map { photo ->
+            """{"id":${photo.id},"latitude":${photo.latitude},"longitude":${photo.longitude}}"""
+        }.joinToString(prefix = "[", postfix = "]")
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Maps integration
-        GoogleMap(
-            modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState,
-            properties = properties,
-            uiSettings = uiSettings,
-            onMapClick = {
-                selectedPhotoMarker = null
-            }
-        ) {
-            Clustering(
-                items = photos.map { PhotoClusterItem(it) },
-                onClusterItemClick = { item ->
-                    selectedPhotoMarker = item.photo
-                    false
+        // Keyless Web Maps integration (Leaflet + OpenStreetMap/Google Maps tiles)
+        AndroidView(
+            factory = { context ->
+                WebView(context).apply {
+                    @SuppressLint("SetJavaScriptEnabled")
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            isPageLoaded = true
+                            // Initial setup once page loads
+                            view?.evaluateJavascript("setMapType('$mapTypeSetting')", null)
+                            view?.evaluateJavascript("updateMarkers('$jsonPhotos')", null)
+                            
+                            // Center on current location if there are no photos yet
+                            if (photos.isEmpty() && currentLocation.latitude != 0.0 && currentLocation.longitude != 0.0) {
+                                view?.evaluateJavascript(
+                                    "centerOn(${currentLocation.latitude}, ${currentLocation.longitude}, 15)",
+                                    null
+                                )
+                            }
+                        }
+                    }
+
+                    addJavascriptInterface(object {
+                        @JavascriptInterface
+                        fun onMarkerClick(photoId: Long) {
+                            post {
+                                selectedPhotoMarker = photos.find { it.id == photoId }
+                            }
+                        }
+
+                        @JavascriptInterface
+                        fun onMapClick() {
+                            post {
+                                selectedPhotoMarker = null
+                            }
+                        }
+                    }, "AndroidInterface")
+
+                    loadUrl("file:///android_asset/map.html")
                 }
-            )
-        }
+            },
+            update = { view ->
+                if (isPageLoaded) {
+                    view.evaluateJavascript("setMapType('$mapTypeSetting')", null)
+                    view.evaluateJavascript("updateMarkers('$jsonPhotos')", null)
+                    
+                    selectedPhotoMarker?.let { photo ->
+                        view.evaluateJavascript("selectMarker(${photo.id})", null)
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
 
         // Top Overlay Map Type Toggles
         Surface(
@@ -137,6 +126,7 @@ fun MapScreen(
                 Icon(Icons.Rounded.Map, contentDescription = "Map Style")
                 Text("Map Mode: ", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                 
+                // Normal, Satellite, Hybrid, Terrain options (all keyless web tiles mapped in JS)
                 listOf("normal", "satellite", "hybrid", "terrain").forEach { type ->
                     val isSelected = mapTypeSetting == type
                     FilterChip(
