@@ -11,8 +11,26 @@
 -dontwarn com.google.zxing.**
 
 # Room Database Keep Rules
--keep class * extends androidx.room.RoomDatabase
+-keep class * extends androidx.room.RoomDatabase {
+    <init>(...);
+}
 -dontwarn androidx.room.**
+
+# WorkManager Proguard Rules to prevent NoSuchMethodException on startup
+-keep class androidx.work.impl.WorkDatabase_Impl {
+    <init>(...);
+}
+-keep class * extends androidx.work.Worker {
+    <init>(...);
+}
+-keep class * extends androidx.work.ListenableWorker {
+    <init>(...);
+}
+-dontwarn androidx.work.**
+
+# Osmdroid (OpenStreetMap) Proguard Rules
+-keep class org.osmdroid.** { *; }
+-dontwarn org.osmdroid.**
 
 # Jetpack Compose and Kotlin serialization
 -keepclassmembers class * {
