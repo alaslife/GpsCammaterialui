@@ -112,6 +112,9 @@ dependencies {
     // ZXing for QR Code generation
     implementation("com.google.zxing:core:3.5.3")
 
+    // OpenStreetMap (Osmdroid)
+    implementation("org.osmdroid:osmdroid-android:6.1.18")
+
     // Jetpack Media3 ExoPlayer & Transformer
     implementation("androidx.media3:media3-exoplayer:1.3.1")
     implementation("androidx.media3:media3-ui:1.3.1")
