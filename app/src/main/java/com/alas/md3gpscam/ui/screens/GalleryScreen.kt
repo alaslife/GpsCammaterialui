@@ -1,17 +1,23 @@
 package com.alas.md3gpscam.ui.screens
 
+import android.content.Context
 import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -27,15 +33,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.alas.md3gpscam.data.database.PhotoEntity
 import com.alas.md3gpscam.ui.MainViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.core.content.FileProvider
-import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +54,11 @@ fun GalleryScreen(
     val selectedPhoto by viewModel.selectedPhotoForGallery.collectAsState()
     val context = LocalContext.current
     
+    // Multiple selection states
+    var isSelectionMode by remember { mutableStateOf(false) }
+    val selectedPhotos = remember { mutableStateListOf<PhotoEntity>() }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+
     // Group photos by date
     val groupedPhotos = photos.groupBy {
         val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
@@ -57,14 +67,56 @@ fun GalleryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Gallery") },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = { Text("${selectedPhotos.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            selectedPhotos.clear()
+                            isSelectionMode = false
+                        }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Cancel Selection")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            if (selectedPhotos.size == photos.size) {
+                                selectedPhotos.clear()
+                            } else {
+                                selectedPhotos.clear()
+                                selectedPhotos.addAll(photos)
+                            }
+                        }) {
+                            Icon(Icons.Rounded.SelectAll, contentDescription = "Select/Deselect All")
+                        }
+                        IconButton(
+                            enabled = selectedPhotos.isNotEmpty(),
+                            onClick = {
+                                shareMultiplePhotos(context, selectedPhotos)
+                            }
+                        ) {
+                            Icon(Icons.Rounded.Share, contentDescription = "Share Selected")
+                        }
+                        IconButton(
+                            enabled = selectedPhotos.isNotEmpty(),
+                            onClick = {
+                                showDeleteConfirmation = true
+                            }
+                        ) {
+                            Icon(Icons.Rounded.Delete, contentDescription = "Delete Selected", tint = MaterialTheme.colorScheme.error)
+                        }
                     }
-                }
-            )
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Gallery") },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back")
+                        }
+                    }
+                )
+            }
         }
     ) { paddingValues ->
         if (photos.isEmpty()) {
@@ -107,10 +159,30 @@ fun GalleryScreen(
                         }
                     }
                     items(photoList, key = { it.id }) { photo ->
+                        val isSelected = selectedPhotos.contains(photo)
                         GalleryItem(
                             photo = photo,
-                            onItemClick = {
-                                viewModel.setSelectedPhotoForGallery(it)
+                            isSelectionMode = isSelectionMode,
+                            isSelected = isSelected,
+                            onItemClick = { clickedPhoto ->
+                                if (isSelectionMode) {
+                                    if (isSelected) {
+                                        selectedPhotos.remove(clickedPhoto)
+                                        if (selectedPhotos.isEmpty()) {
+                                            isSelectionMode = false
+                                        }
+                                    } else {
+                                        selectedPhotos.add(clickedPhoto)
+                                    }
+                                } else {
+                                    viewModel.setSelectedPhotoForGallery(clickedPhoto)
+                                }
+                            },
+                            onItemLongClick = { clickedPhoto ->
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                    selectedPhotos.add(clickedPhoto)
+                                }
                             }
                         )
                     }
@@ -119,7 +191,8 @@ fun GalleryScreen(
         }
     }
 
-    if (selectedPhoto != null) {
+    // Single photo detail overlay sheet
+    if (selectedPhoto != null && !isSelectionMode) {
         val p = selectedPhoto!!
         PhotoDetailOverlay(
             photo = p,
@@ -134,17 +207,52 @@ fun GalleryScreen(
             }
         )
     }
+
+    // Delete confirmation alert dialog
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete selected items?") },
+            text = { Text("Are you sure you want to delete the ${selectedPhotos.size} selected photos and videos? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        selectedPhotos.forEach { photo ->
+                            viewModel.deletePhoto(photo)
+                        }
+                        selectedPhotos.clear()
+                        isSelectionMode = false
+                        showDeleteConfirmation = false
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun GalleryItem(
     photo: PhotoEntity,
-    onItemClick: (PhotoEntity) -> Unit
+    isSelectionMode: Boolean,
+    isSelected: Boolean,
+    onItemClick: (PhotoEntity) -> Unit,
+    onItemLongClick: (PhotoEntity) -> Unit
 ) {
     Card(
         modifier = Modifier
             .aspectRatio(1f)
-            .clickable { onItemClick(photo) },
+            .combinedClickable(
+                onClick = { onItemClick(photo) },
+                onLongClick = { onItemLongClick(photo) }
+            ),
         shape = MaterialTheme.shapes.medium
     ) {
         Box(
@@ -158,10 +266,11 @@ fun GalleryItem(
                 contentScale = ContentScale.Crop
             )
 
+            // Video indicator overlay
             if (photo.isVideo) {
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.5f)),
                     contentAlignment = Alignment.Center
@@ -170,8 +279,42 @@ fun GalleryItem(
                         Icons.Rounded.PlayArrow,
                         contentDescription = "Video",
                         tint = Color.White,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(24.dp)
                     )
+                }
+            }
+
+            // Selection Mode overlay tint & badge
+            if (isSelectionMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                            else Color.Black.copy(alpha = 0.15f)
+                        )
+                )
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else Color.White.copy(alpha = 0.6f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = "Selected check",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }
@@ -262,14 +405,7 @@ fun PhotoDetailOverlay(
                             DropdownMenuItem(
                                 text = { Text("Share") },
                                 onClick = {
-                                    val file = File(photo.filePath)
-                                    val uri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
-                                    val shareIntent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        type = if (photo.isVideo) "video/*" else "image/*"
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share via"))
+                                    shareSinglePhoto(context, photo)
                                     showMenu = false
                                 },
                                 leadingIcon = { Icon(Icons.Rounded.Share, null) }
@@ -332,4 +468,41 @@ fun PhotoDetailOverlay(
             }
         }
     }
+}
+
+// Helpers for sharing single and multiple media items
+fun shareSinglePhoto(context: Context, photo: PhotoEntity) {
+    val file = File(photo.filePath)
+    if (!file.exists()) return
+    val uri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
+    val shareIntent = Intent().apply {
+        action = Intent.ACTION_SEND
+        putExtra(Intent.EXTRA_STREAM, uri)
+        type = if (photo.isVideo) "video/*" else "image/*"
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, "Share via"))
+}
+
+fun shareMultiplePhotos(context: Context, selectedList: List<PhotoEntity>) {
+    if (selectedList.isEmpty()) return
+    
+    val uris = ArrayList<android.net.Uri>()
+    selectedList.forEach { photo ->
+        val file = File(photo.filePath)
+        if (file.exists()) {
+            val uri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
+            uris.add(uri)
+        }
+    }
+    
+    if (uris.isEmpty()) return
+    
+    val shareIntent = Intent().apply {
+        action = Intent.ACTION_SEND_MULTIPLE
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+        type = "*/*" // Mix images and videos
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(shareIntent, "Share ${uris.size} items via"))
 }
