@@ -471,10 +471,25 @@ fun PhotoDetailOverlay(
 }
 
 // Helpers for sharing single and multiple media items
+fun getShareUri(context: Context, filePath: String): android.net.Uri? {
+    return if (filePath.startsWith("content://")) {
+        android.net.Uri.parse(filePath)
+    } else {
+        val file = if (filePath.startsWith("file://")) {
+            File(android.net.Uri.parse(filePath).path ?: "")
+        } else {
+            File(filePath)
+        }
+        if (file.exists()) {
+            FileProvider.getUriForFile(context, context.packageName + ".provider", file)
+        } else {
+            null
+        }
+    }
+}
+
 fun shareSinglePhoto(context: Context, photo: PhotoEntity) {
-    val file = File(photo.filePath)
-    if (!file.exists()) return
-    val uri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
+    val uri = getShareUri(context, photo.filePath) ?: return
     val shareIntent = Intent().apply {
         action = Intent.ACTION_SEND
         putExtra(Intent.EXTRA_STREAM, uri)
@@ -489,9 +504,8 @@ fun shareMultiplePhotos(context: Context, selectedList: List<PhotoEntity>) {
     
     val uris = ArrayList<android.net.Uri>()
     selectedList.forEach { photo ->
-        val file = File(photo.filePath)
-        if (file.exists()) {
-            val uri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
+        val uri = getShareUri(context, photo.filePath)
+        if (uri != null) {
             uris.add(uri)
         }
     }
