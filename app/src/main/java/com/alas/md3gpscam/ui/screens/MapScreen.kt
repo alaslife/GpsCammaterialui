@@ -2,6 +2,8 @@ package com.alas.md3gpscam.ui.screens
 
 import android.annotation.SuppressLint
 import android.webkit.JavascriptInterface
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.*
@@ -56,6 +58,17 @@ fun MapScreen(
                     @SuppressLint("SetJavaScriptEnabled")
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
+                    settings.allowFileAccess = true
+                    settings.allowContentAccess = true
+                    
+                    // Set custom User Agent to ensure tile servers do not reject requests
+                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) GpsCamApp"
+                    
+                    // Allow loading HTTPS CDNs/tiles from local content
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                    }
                     
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
@@ -72,6 +85,15 @@ fun MapScreen(
                                     null
                                 )
                             }
+                        }
+
+                        override fun onReceivedError(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                            error: WebResourceError?
+                        ) {
+                            super.onReceivedError(view, request, error)
+                            android.util.Log.e("MapScreen", "WebView Error: ${error?.description} for ${request?.url}")
                         }
                     }
 
@@ -91,7 +113,20 @@ fun MapScreen(
                         }
                     }, "AndroidInterface")
 
-                    loadUrl("file:///android_asset/map.html")
+                    // Read html from assets and load with secure base URL to bypass Same-Origin Policy (SOP) blocks
+                    try {
+                        val htmlContent = context.assets.open("map.html").bufferedReader().use { it.readText() }
+                        loadDataWithBaseURL(
+                            "https://appassets.androidplatform.net",
+                            htmlContent,
+                            "text/html",
+                            "UTF-8",
+                            null
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.e("MapScreen", "Failed to load map.html from assets", e)
+                        loadUrl("file:///android_asset/map.html")
+                    }
                 }
             },
             update = { view ->
